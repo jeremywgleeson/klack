@@ -39,7 +39,7 @@ async function fixture(): Promise<{ appPath: string; klackRoot: string; root: st
       main: "dist/boot.bundle.cjs",
       name: "slack-desktop",
       productName: "Slack",
-      version: "4.50.143",
+      version: "4.51.180",
     }),
   );
   fs.writeFileSync(path.join(source, "dist", "boot.bundle.cjs"), "globalThis.slackBooted = true;\n");
@@ -67,7 +67,7 @@ test("install, reinstall, and uninstall preserve Slack's original ASAR", async (
 
   const installed = await install({ appPath, klackRoot, resign: false });
   assert.equal(installed.state, "installed");
-  assert.equal(installed.slackVersion, "4.50.143");
+  assert.equal(installed.slackVersion, "4.51.180");
 
   const resources = path.join(appPath, "Contents", "Resources");
   assert.ok(fs.existsSync(path.join(resources, "_app.asar")));
@@ -79,7 +79,7 @@ test("install, reinstall, and uninstall preserve Slack's original ASAR", async (
   ) as { name: string; productName: string; version: string };
   assert.equal(bootstrap.name, "klack-bootstrap");
   assert.equal(bootstrap.productName, "Slack");
-  assert.equal(bootstrap.version, "4.50.143");
+  assert.equal(bootstrap.version, "4.51.180");
 
   let integrity = integrityEntries(appPath);
   assert.equal(integrity["Resources/app.asar"].hash, integrityHash(path.join(resources, "app.asar")));
