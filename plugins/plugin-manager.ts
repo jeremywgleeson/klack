@@ -1,6 +1,26 @@
 import { definePlugin } from "klack/sdk";
 
+import { normalizeSlackColor } from "./lib/plugin-manager";
+
 const PLUGIN_NAME = "PluginManager";
+
+const THEME_COLOR_PROPERTIES = [
+  ["--sk_primary_foreground", "--klack-plugin-manager-primary-foreground"],
+  ["--sk_primary_foreground_low", "--klack-plugin-manager-primary-foreground-low"],
+  ["--sk_primary_foreground_high", "--klack-plugin-manager-primary-foreground-high"],
+  ["--sk_primary_background", "--klack-plugin-manager-primary-background"],
+  ["--sk_primary_background_highlight", "--klack-plugin-manager-primary-background-highlight"],
+  ["--sk_highlight", "--klack-plugin-manager-highlight"],
+] as const;
+
+function syncThemeColors(element: HTMLElement): void {
+  const computed = getComputedStyle(element);
+  for (const [source, destination] of THEME_COLOR_PROPERTIES) {
+    const color = normalizeSlackColor(computed.getPropertyValue(source));
+    if (color) element.style.setProperty(destination, color);
+    else element.style.removeProperty(destination);
+  }
+}
 
 type PluginSummary = {
   description?: string;
@@ -116,7 +136,7 @@ export default definePlugin({
           display: grid;
           padding: 32px;
           place-items: center;
-          color: var(--sk_primary_foreground, #1d1c1d);
+          color: var(--klack-plugin-manager-primary-foreground, #1d1c1d);
           background: rgba(29, 28, 29, 0.62);
           font-family: Slack-Lato, Lato, sans-serif;
         }
@@ -127,9 +147,9 @@ export default definePlugin({
           max-height: min(720px, calc(100vh - 64px));
           overflow: hidden;
           flex-direction: column;
-          border: 1px solid var(--sk_primary_foreground_low, rgba(29, 28, 29, 0.13));
+          border: 1px solid var(--klack-plugin-manager-primary-foreground-low, rgba(29, 28, 29, 0.13));
           border-radius: 12px;
-          background: var(--sk_primary_background, #fff);
+          background: var(--klack-plugin-manager-primary-background, #fff);
           box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
         }
 
@@ -142,7 +162,7 @@ export default definePlugin({
 
         [data-klack-plugin-manager-heading] {
           margin: 0;
-          color: var(--sk_primary_foreground, #1d1c1d);
+          color: var(--klack-plugin-manager-primary-foreground, #1d1c1d);
           font-size: 22px;
           font-weight: 900;
           line-height: 28px;
@@ -150,7 +170,7 @@ export default definePlugin({
 
         [data-klack-plugin-manager-subtitle] {
           margin: 3px 0 0;
-          color: var(--sk_primary_foreground_high, #616061);
+          color: var(--klack-plugin-manager-primary-foreground-high, #616061);
           font-size: 13px;
           line-height: 18px;
         }
@@ -164,22 +184,22 @@ export default definePlugin({
           place-items: center;
           border: 0;
           border-radius: 6px;
-          color: var(--sk_primary_foreground_high, #616061);
+          color: var(--klack-plugin-manager-primary-foreground-high, #616061);
           background: transparent;
           font: 400 26px/1 Slack-Lato, Lato, sans-serif;
           cursor: pointer;
         }
 
         [data-klack-plugin-manager-close]:hover {
-          color: var(--sk_primary_foreground, #1d1c1d);
-          background: var(--sk_primary_foreground_low, rgba(29, 28, 29, 0.08));
+          color: var(--klack-plugin-manager-primary-foreground, #1d1c1d);
+          background: var(--klack-plugin-manager-primary-foreground-low, rgba(29, 28, 29, 0.08));
         }
 
         [data-klack-plugin-manager-tabs] {
           display: flex;
           gap: 20px;
           padding: 0 28px;
-          border-bottom: 1px solid var(--sk_primary_foreground_low, rgba(29, 28, 29, 0.13));
+          border-bottom: 1px solid var(--klack-plugin-manager-primary-foreground-low, rgba(29, 28, 29, 0.13));
         }
 
         [data-klack-plugin-manager-tab] {
@@ -188,20 +208,20 @@ export default definePlugin({
           padding: 0 1px;
           border: 0;
           border-bottom: 2px solid transparent;
-          color: var(--sk_primary_foreground_high, #616061);
+          color: var(--klack-plugin-manager-primary-foreground-high, #616061);
           background: transparent;
           font: 700 14px/34px Slack-Lato, Lato, sans-serif;
           cursor: pointer;
         }
 
         [data-klack-plugin-manager-tab][aria-selected="true"] {
-          border-bottom-color: var(--sk_highlight, #1264a3);
-          color: var(--sk_primary_foreground, #1d1c1d);
+          border-bottom-color: var(--klack-plugin-manager-highlight, #1264a3);
+          color: var(--klack-plugin-manager-primary-foreground, #1d1c1d);
         }
 
         [data-klack-plugin-manager-tab]:focus-visible {
           border-radius: 3px;
-          outline: 2px solid var(--sk_highlight, #1264a3);
+          outline: 2px solid var(--klack-plugin-manager-highlight, #1264a3);
           outline-offset: 1px;
         }
 
@@ -214,14 +234,14 @@ export default definePlugin({
           align-items: center;
           height: 36px;
           padding: 0 11px;
-          border: 1px solid var(--sk_primary_foreground_low, #868686);
+          border: 1px solid var(--klack-plugin-manager-primary-foreground-low, #868686);
           border-radius: 6px;
-          background: var(--sk_primary_background, #fff);
+          background: var(--klack-plugin-manager-primary-background, #fff);
         }
 
         [data-klack-plugin-manager-search-wrap]:focus-within {
-          border-color: var(--sk_highlight, #1264a3);
-          box-shadow: 0 0 0 1px var(--sk_highlight, #1264a3);
+          border-color: var(--klack-plugin-manager-highlight, #1264a3);
+          box-shadow: 0 0 0 1px var(--klack-plugin-manager-highlight, #1264a3);
         }
 
         [data-klack-plugin-manager-search-wrap] svg {
@@ -229,7 +249,7 @@ export default definePlugin({
           width: 16px;
           height: 16px;
           margin-right: 8px;
-          color: var(--sk_primary_foreground_high, #616061);
+          color: var(--klack-plugin-manager-primary-foreground-high, #616061);
           fill: none;
           stroke: currentColor;
           stroke-width: 1.8;
@@ -241,20 +261,20 @@ export default definePlugin({
           padding: 0;
           border: 0;
           outline: 0;
-          color: var(--sk_primary_foreground, #1d1c1d);
+          color: var(--klack-plugin-manager-primary-foreground, #1d1c1d);
           background: transparent;
           font: 400 15px/32px Slack-Lato, Lato, sans-serif;
         }
 
         [data-klack-plugin-manager-search]::placeholder {
-          color: var(--sk_primary_foreground_high, #616061);
+          color: var(--klack-plugin-manager-primary-foreground-high, #616061);
         }
 
         [data-klack-plugin-manager-list] {
           min-height: 140px;
           overflow-y: auto;
-          border-top: 1px solid var(--sk_primary_foreground_low, rgba(29, 28, 29, 0.13));
-          border-bottom: 1px solid var(--sk_primary_foreground_low, rgba(29, 28, 29, 0.13));
+          border-top: 1px solid var(--klack-plugin-manager-primary-foreground-low, rgba(29, 28, 29, 0.13));
+          border-bottom: 1px solid var(--klack-plugin-manager-primary-foreground-low, rgba(29, 28, 29, 0.13));
         }
 
         [data-klack-plugin-manager-row] {
@@ -267,11 +287,11 @@ export default definePlugin({
         }
 
         [data-klack-plugin-manager-row] + [data-klack-plugin-manager-row] {
-          border-top: 1px solid var(--sk_primary_foreground_low, rgba(29, 28, 29, 0.08));
+          border-top: 1px solid var(--klack-plugin-manager-primary-foreground-low, rgba(29, 28, 29, 0.08));
         }
 
         [data-klack-plugin-manager-row]:hover {
-          background: var(--sk_primary_background_highlight, rgba(29, 28, 29, 0.035));
+          background: var(--klack-plugin-manager-primary-background-highlight, rgba(29, 28, 29, 0.035));
         }
 
         [data-klack-plugin-manager-icon] {
@@ -318,7 +338,7 @@ export default definePlugin({
 
         [data-klack-plugin-manager-status].is-disabled,
         [data-klack-plugin-manager-status].is-required {
-          color: var(--sk_primary_foreground_high, #616061);
+          color: var(--klack-plugin-manager-primary-foreground-high, #616061);
         }
 
         [data-klack-plugin-manager-status].is-error {
@@ -328,7 +348,7 @@ export default definePlugin({
         [data-klack-plugin-manager-description] {
           margin-top: 2px;
           overflow: hidden;
-          color: var(--sk_primary_foreground_high, #616061);
+          color: var(--klack-plugin-manager-primary-foreground-high, #616061);
           font-size: 13px;
           line-height: 18px;
           text-overflow: ellipsis;
@@ -369,7 +389,7 @@ export default definePlugin({
         }
 
         [data-klack-plugin-manager-switch]:focus-visible {
-          outline: 2px solid var(--sk_highlight, #1264a3);
+          outline: 2px solid var(--klack-plugin-manager-highlight, #1264a3);
           outline-offset: 2px;
         }
 
@@ -380,7 +400,7 @@ export default definePlugin({
 
         [data-klack-plugin-manager-empty] {
           padding: 48px 28px;
-          color: var(--sk_primary_foreground_high, #616061);
+          color: var(--klack-plugin-manager-primary-foreground-high, #616061);
           text-align: center;
           font-size: 14px;
         }
@@ -396,7 +416,7 @@ export default definePlugin({
         [data-klack-plugin-manager-path] {
           min-width: 0;
           overflow: hidden;
-          color: var(--sk_primary_foreground_high, #616061);
+          color: var(--klack-plugin-manager-primary-foreground-high, #616061);
           font-size: 12px;
           line-height: 16px;
           text-overflow: ellipsis;
@@ -630,6 +650,7 @@ export default definePlugin({
               if (item.required) return;
               item.toggle();
               renderList();
+              klack.timers.animationFrame(() => syncThemeColors(nextOverlay));
             });
 
             row.append(icon, copy, toggle);
@@ -649,6 +670,7 @@ export default definePlugin({
       const open = (): void => {
         previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         nextOverlay.hidden = false;
+        syncThemeColors(nextOverlay);
         renderList();
         list.scrollTop = 0;
         klack.timers.animationFrame(() => search.focus());
