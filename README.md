@@ -94,9 +94,12 @@ callbacks return to the Klack-enabled app.
 
 On macOS, modifying any sealed resource invalidates Slack's vendor signature,
 so Klack updates Electron's ASAR integrity metadata and ad-hoc signs the outer
-app by default. It leaves Slack's vendor-signed helpers and frameworks
-untouched. Use `--no-resign` to skip this, but the modified app will not launch
-until it is signed.
+app by default. Electron 41 and newer also embed a digest of that metadata in
+the Electron framework. Klack updates the embedded digest and ad-hoc signs the
+framework and Slack helper apps as one process group so library validation does
+not reject a mixture of vendor and ad-hoc Team IDs. Entitlements that require
+Slack's Apple team are removed from the ad-hoc signatures. Use `--no-resign` to
+skip signing, but the modified app will not launch until it is signed.
 
 Ad-hoc signing can alter Keychain, notification, update, and device-permission
 behavior. When macOS App Management prevents direct changes to the canonical
@@ -104,6 +107,10 @@ Slack app, Klack installs through a clean staging copy and retains the complete
 original bundle in `/Applications/.Slack.app.klack-original`. Uninstall then
 restores that vendor-signed bundle. Directly writable copies only preserve the
 original ASAR and remain ad-hoc signed after uninstall.
+
+This installer flow is verified with Slack 4.53.276 (Electron 45.1.0). Slack or
+Electron updates can change signing or integrity requirements, so test newer
+releases on a disposable copy before replacing the canonical app.
 
 ## Plugin API
 
@@ -359,8 +366,8 @@ you have not reviewed.
 ## How injection works
 
 1. The installer renames Slack's `app.asar` to `_app.asar`, installs a tiny
-   bootstrap archive, updates `ElectronAsarIntegrity`, and ad-hoc signs the
-   outer app bundle.
+   bootstrap archive, updates `ElectronAsarIntegrity` and Electron's embedded
+   digest of that map, and ad-hoc signs the Electron process group.
 2. The bootstrap starts Klack's main-process patcher.
 3. Klack redirects Electron to Slack's original package and wraps
    `BrowserWindow`.

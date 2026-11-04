@@ -40,7 +40,20 @@ type AppPaths = {
   resources: string;
 };
 
-type AsarIntegrity = Record<string, { algorithm: "SHA256"; hash: string }>;
+export type AsarIntegrity = Record<string, { algorithm: "SHA256"; hash: string }>;
+
+const RESTRICTED_AD_HOC_ENTITLEMENTS = [
+  "application-identifier",
+  "com.apple.application-identifier",
+  "com.apple.developer.associated-domains",
+  "com.apple.developer.team-identifier",
+  "keychain-access-groups",
+] as const;
+// Electron 41+ places this marker before each architecture's serialized
+// ElectronAsarIntegrity digest. Universal binaries therefore contain more than
+// one slot, and every slot must agree with Info.plist.
+const ASAR_INTEGRITY_DIGEST_SENTINEL = Buffer.from("AGbevlPCksUGKNL8TSn7wGmJEuJsXb2A");
+const ASAR_INTEGRITY_DIGEST_PREFIX = Buffer.from([1, 1]); // format v1, SHA-256
 
 function appPaths(appPath: string): AppPaths {
   const resources = path.join(path.resolve(appPath), "Contents", "Resources");
@@ -123,6 +136,75 @@ function writeAsarIntegrity(infoPlist: string, integrity: AsarIntegrity): void {
   );
 }
 
+export function electronAsarIntegrityDigest(integrity: Readonly<AsarIntegrity>): Buffer {
+  const digest = createHash("sha256");
+  for (const key of Object.keys(integrity).sort()) {
+    digest.update(key);
+    digest.update(integrity[key].algorithm);
+    digest.update(integrity[key].hash);
+  }
+  return digest.digest();
+}
+
+export function electronAsarIntegrityDigestSlotOffsets(contents: Buffer): number[] {
+  const offsets: number[] = [];
+  for (
+    let index = contents.indexOf(ASAR_INTEGRITY_DIGEST_SENTINEL);
+    index !== -1;
+    index = contents.indexOf(ASAR_INTEGRITY_DIGEST_SENTINEL, index + 1)
+  ) {
+    offsets.push(index + ASAR_INTEGRITY_DIGEST_SENTINEL.length);
+  }
+  return offsets;
+}
+
+function patchElectronAsarIntegrityDigest(appPath: string, integrity: AsarIntegrity): boolean {
+  const binary = path.join(
+    appPath,
+    "Contents",
+    "Frameworks",
+    "Electron Framework.framework",
+    "Electron Framework",
+  );
+  if (!fs.existsSync(binary)) return false;
+
+  const handle = fs.openSync(binary, "r+");
+  try {
+    const size = fs.fstatSync(handle).size;
+    const chunkSize = 4 * 1024 * 1024;
+    const overlap = ASAR_INTEGRITY_DIGEST_SENTINEL.length - 1;
+    const chunk = Buffer.allocUnsafe(chunkSize + overlap);
+    const offsets = new Set<number>();
+
+    for (let start = 0; start < size; start += chunkSize) {
+      const bytesRead = fs.readSync(
+        handle,
+        chunk,
+        0,
+        Math.min(chunk.length, size - start),
+        start,
+      );
+      for (const offset of electronAsarIntegrityDigestSlotOffsets(chunk.subarray(0, bytesRead))) {
+        offsets.add(start + offset);
+      }
+    }
+
+    const payload = Buffer.concat([
+      ASAR_INTEGRITY_DIGEST_PREFIX,
+      electronAsarIntegrityDigest(integrity),
+    ]);
+    for (const offset of offsets) {
+      if (offset + payload.length > size) {
+        throw new Error("Electron's ASAR integrity digest slot is truncated");
+      }
+      fs.writeSync(handle, payload, 0, payload.length, offset);
+    }
+    return offsets.size > 0;
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
 function updateAsarIntegrity(paths: AppPaths, installed: boolean): void {
   const integrity = readAsarIntegrity(paths.infoPlist);
   integrity["Resources/app.asar"] = asarIntegrity(paths.appAsar);
@@ -148,21 +230,37 @@ function readEntitlements(appPath: string): string {
   return entitlements;
 }
 
-function allowAdHocLibraries(entitlements: string): string {
-  const key = "com.apple.security.cs.disable-library-validation";
-  const existing = new RegExp(`(<key>${key.replaceAll(".", "\\.")}<\\/key>\\s*)<false\\s*\\/>`);
-  if (existing.test(entitlements)) return entitlements.replace(existing, "$1<true/>");
-  if (entitlements.includes(`<key>${key}</key>`)) return entitlements;
+export function adHocEntitlements(
+  entitlements: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...entitlements };
+  // These values are bound to Slack's provisioning profile and Team ID. macOS
+  // rejects them when they are copied onto an ad-hoc signature.
+  for (const entitlement of RESTRICTED_AD_HOC_ENTITLEMENTS) delete result[entitlement];
+  result["com.apple.security.cs.disable-library-validation"] = true;
+  return result;
+}
 
-  const closingDictionary = entitlements.lastIndexOf("</dict>");
-  if (closingDictionary === -1) throw new Error("Slack's macOS entitlements are not a valid plist");
-  return `${entitlements.slice(0, closingDictionary)}<key>${key}</key><true/>${entitlements.slice(closingDictionary)}`;
+function prepareAdHocEntitlements(entitlements: string): string {
+  const decoded = JSON.parse(
+    execFileSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", "--", "-"], {
+      encoding: "utf8",
+      input: entitlements,
+    }),
+  ) as unknown;
+  if (typeof decoded !== "object" || decoded === null || Array.isArray(decoded)) {
+    throw new Error("Slack's macOS entitlements are not a dictionary");
+  }
+  return execFileSync("/usr/bin/plutil", ["-convert", "xml1", "-o", "-", "--", "-"], {
+    encoding: "utf8",
+    input: JSON.stringify(adHocEntitlements(decoded as Record<string, unknown>)),
+  });
 }
 
 function resignMacApp(appPath: string, entitlements: string): void {
   const temporary = path.join(os.tmpdir(), `klack-entitlements-${process.pid}-${Date.now()}.plist`);
   try {
-    fs.writeFileSync(temporary, allowAdHocLibraries(entitlements));
+    fs.writeFileSync(temporary, prepareAdHocEntitlements(entitlements));
     execFileSync(
       "/usr/bin/codesign",
       ["--force", "--sign", "-", "--options", "runtime", "--entitlements", temporary, appPath],
@@ -171,6 +269,32 @@ function resignMacApp(appPath: string, entitlements: string): void {
     execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", appPath], { stdio: "pipe" });
   } finally {
     fs.rmSync(temporary, { force: true });
+  }
+}
+
+function resignElectronProcessGroup(appPath: string): void {
+  const frameworks = path.join(appPath, "Contents", "Frameworks");
+  const framework = path.join(frameworks, "Electron Framework.framework");
+  for (const helper of ["app_shim_loader", "chrome_crashpad_handler"]) {
+    const helperPath = path.join(framework, "Versions", "Current", "Helpers", helper);
+    if (fs.existsSync(helperPath)) {
+      execFileSync(
+        "/usr/bin/codesign",
+        ["--force", "--sign", "-", "--options", "runtime", helperPath],
+        { stdio: "pipe" },
+      );
+    }
+  }
+  execFileSync(
+    "/usr/bin/codesign",
+    ["--force", "--sign", "-", "--options", "runtime", framework],
+    { stdio: "pipe" },
+  );
+
+  for (const entry of fs.readdirSync(frameworks, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/ Helper(?: \([^)]+\))?\.app$/.test(entry.name)) continue;
+    const helperPath = path.join(frameworks, entry.name);
+    resignMacApp(helperPath, readEntitlements(helperPath));
   }
 }
 
@@ -184,6 +308,13 @@ function finishMacBundle(
   if (!fs.existsSync(paths.infoPlist)) throw new Error(`Slack Info.plist not found at ${paths.infoPlist}`);
 
   updateAsarIntegrity(paths, installed);
+  const patchedFramework = patchElectronAsarIntegrityDigest(
+    appPath,
+    readAsarIntegrity(paths.infoPlist),
+  );
+  if (entitlements && patchedFramework) {
+    resignElectronProcessGroup(appPath);
+  }
   if (entitlements) resignMacApp(appPath, entitlements);
 }
 
